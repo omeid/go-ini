@@ -2,6 +2,7 @@ package ini
 
 import (
 	"bufio"
+	"encoding"
 	"fmt"
 	"io"
 	"reflect"
@@ -18,33 +19,33 @@ func Decoder(i io.Reader, out interface{}) error {
 	scanner := bufio.NewScanner(i)
 
 	scanner = bufio.NewScanner(i)
-	o := reflect.ValueOf(out).Elem()
+	o := reflect.ValueOf(out)
 	cur := &o
 	line := 0
 	for scanner.Scan() {
 		line++
-		parts := syntaxregex.FindStringSubmatch(scanner.Text())
+		parts := syntaxregex.FindSubmatch(scanner.Bytes())
 		var (
-			section = parts[1] != ""
+			section = parts[1] != nil
 			key     = parts[2]
 			value   = parts[3]
-			comment = parts[4] != ""
-			empty   = parts[5] == "" && !section && key == ""
+			comment = parts[4] != nil
+			empty   = len(parts[5]) == 0 && !section && key == nil
 		)
 
 		if empty || comment {
 			continue
 		}
 
-		if (!section && key == "") || scanner.Err() != nil {
-			return fmt.Errorf("Invalid Syntax at line %d: \"%s\"", line, scanner.Text())
+		if (!section && key == nil) || scanner.Err() != nil {
+			return fmt.Errorf("Invalid Syntax at line %d: \"%s\"", line, scanner.Bytes())
 		}
 		if section {
 			cur = &o
 			key = parts[1]
 		}
 
-		f := cur.FieldByName(key)
+		f := reflect.Indirect(*cur).FieldByName(string(key))
 		if !f.IsValid() || !f.CanSet() {
 			continue
 		}
@@ -54,18 +55,29 @@ func Decoder(i io.Reader, out interface{}) error {
 			continue
 		}
 
+		if cur.CanAddr() {
+			if u, ok := cur.Addr().Interface().(encoding.BinaryUnmarshaler); ok {
+				err := u.UnmarshalBinary(nil)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+		}
+
 		if setter, ok := setters[f.Kind()]; ok {
 			err := setter(f, value)
 			if err != nil {
 				return err
 			}
+			continue
 		}
-	}
 
+	}
 	return scanner.Err()
 }
 
-type setter func(v reflect.Value, str string) error
+type setter func(v reflect.Value, val []byte) error
 
 var (
 	setters_short = map[reflect.Kind]setter{
@@ -91,18 +103,19 @@ func init() {
 	setters[reflect.Map] = setMap
 }
 
-func setString(f reflect.Value, str string) error {
-	f.SetString(str)
+func setString(f reflect.Value, val []byte) error {
+	f.SetString(string(val))
 	return nil
 }
 
-func setBool(f reflect.Value, str string) error {
+func setBool(f reflect.Value, val []byte) error {
+	str := string(val)
 	f.SetBool(str == "Yes" || str == "On" || str == "True")
 	return nil
 }
 
-func setint(f reflect.Value, str string) error {
-	str = strings.Replace(str, ",", "", -1)
+func setint(f reflect.Value, val []byte) error {
+	str := strings.Replace(string(val), ",", "", -1)
 	i64, err := strconv.ParseInt(str, 10, 0)
 	if err != nil {
 		return err
@@ -112,9 +125,9 @@ func setint(f reflect.Value, str string) error {
 	return nil
 }
 
-func setSlice(f reflect.Value, str string) error {
+func setSlice(f reflect.Value, val []byte) error {
 
-	parts := strings.Fields(str)
+	parts := strings.Fields(string(val))
 	l := len(parts)
 
 	set, ok := setters_short[f.Type().Elem().Kind()]
@@ -124,14 +137,13 @@ func setSlice(f reflect.Value, str string) error {
 
 	f.Set(reflect.MakeSlice(f.Type(), l, l))
 
-	for i, str := range parts {
-		_, _, _ = set, i, str
-		set(f.Index(i), str)
+	for i, part := range parts {
+		set(f.Index(i), []byte(part))
 
 	}
 	return nil
 }
 
-func setMap(f reflect.Value, str string) error {
+func setMap(f reflect.Value, val []byte) error {
 	return fmt.Errorf("I don't understand type %s.", f.Kind())
 }

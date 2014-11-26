@@ -24,6 +24,15 @@ type testTypeSection struct {
 	Wait             string
 	Retry            int
 	WaitTry          []int
+	DoubleMe         testMarshlerDouble
+}
+
+type testMarshlerDouble int64
+
+func (i *testMarshlerDouble) UnmarshalBinary(v []byte) error {
+	//i64, err := strconv.ParseUint(strings.TrimSpace(string(v)), 10, 64)
+	*i = testMarshlerDouble(42)
+	return nil
 }
 
 var (
@@ -41,6 +50,7 @@ ExecStart=/home/git/gogs/start.sh
 Wait=23s
 Retry=234
 WaitTry=1 3 5 12 30 120 1,300
+DoubleMe=3
 `
 
 	test_bad_input = `[Unit]
@@ -65,6 +75,7 @@ Okay=pass
 			"23s",
 			234,
 			[]int{1, 3, 5, 12, 30, 120, 1300},
+			testMarshlerDouble(6),
 		}}
 )
 
