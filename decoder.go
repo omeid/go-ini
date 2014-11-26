@@ -55,9 +55,9 @@ func Decoder(i io.Reader, out interface{}) error {
 			continue
 		}
 
-		if cur.CanAddr() {
-			if u, ok := cur.Addr().Interface().(encoding.BinaryUnmarshaler); ok {
-				err := u.UnmarshalBinary(nil)
+		if f.CanAddr() {
+			if u, ok := f.Addr().Interface().(encoding.BinaryUnmarshaler); ok {
+				err := u.UnmarshalBinary(value)
 				if err != nil {
 					return err
 				}

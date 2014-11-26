@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -30,9 +32,9 @@ type testTypeSection struct {
 type testMarshlerDouble int64
 
 func (i *testMarshlerDouble) UnmarshalBinary(v []byte) error {
-	//i64, err := strconv.ParseUint(strings.TrimSpace(string(v)), 10, 64)
-	*i = testMarshlerDouble(42)
-	return nil
+	i64, err := strconv.ParseUint(strings.TrimSpace(string(v)), 10, 64)
+	*i = testMarshlerDouble(i64 * 2)
+	return err
 }
 
 var (
